@@ -626,6 +626,22 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
 
         logger.info(`PDF text extracted: ${pdfData.text.length} characters`);
 
+        // Check if text extraction resulted in empty content
+        if (pdfData.text.length === 0) {
+          logger.info('PDF parsing resulted in empty text - trying OpenAI vision as fallback...');
+          const fileBuffer = fs.readFileSync(imagePath);
+          const result = await analyzePDFWithVision(fileBuffer);
+
+          // Clean up and return result
+          try {
+            fs.unlinkSync(imagePath);
+          } catch (cleanupError) {
+            logger.error('Error deleting PDF file:', cleanupError);
+          }
+
+          return result;
+        }
+
         // Analyze the extracted text directly with OpenAI
         const result = await analyzeTextWithOpenAI(pdfData.text);
 
@@ -641,7 +657,25 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
         // PDF text extraction complete - result already returned above
       } catch (pdfError) {
         logger.error('Error processing PDF:', pdfError);
-        throw new Error('Failed to process PDF. Please try uploading an image (JPG/PNG) of your syllabus instead.');
+        logger.info('PDF text extraction failed - trying OpenAI vision as fallback...');
+
+        // Use OpenAI Vision as fallback for image-based PDFs
+        try {
+          const fileBuffer = fs.readFileSync(imagePath);
+          const result = await analyzePDFWithVision(fileBuffer);
+
+          // Clean up and return result
+          try {
+            fs.unlinkSync(imagePath);
+          } catch (cleanupError) {
+            logger.error('Error deleting PDF file:', cleanupError);
+          }
+
+          return result;
+        } catch (visionError) {
+          logger.error('Vision API fallback also failed:', visionError);
+          throw new Error('Failed to process PDF. Please try uploading an image (JPG/PNG) of your syllabus instead.');
+        }
       }
     }
 
