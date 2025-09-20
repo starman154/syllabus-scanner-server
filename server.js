@@ -591,6 +591,13 @@ app.post('/api/scan-syllabus', upload.single('syllabus'), async (req, res) => {
 
   } catch (error) {
     logger.error('Error processing syllabus:', error);
+    logger.error('Error stack:', error.stack);
+    logger.error('File info:', req.file ? {
+      filename: req.file.filename,
+      path: req.file.path,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    } : 'No file');
 
     // Clean up uploaded file on error
     if (req.file && req.file.path) {
@@ -601,7 +608,8 @@ app.post('/api/scan-syllabus', upload.single('syllabus'), async (req, res) => {
 
     res.status(500).json({
       error: 'Processing failed',
-      message: error.message || 'An unexpected error occurred'
+      message: error.message || 'An unexpected error occurred',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
