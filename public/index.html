@@ -183,7 +183,18 @@
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return response.json();
+                } else {
+                    // If not JSON, get text and create error object
+                    return response.text().then(text => {
+                        throw new Error(`Server returned non-JSON response: ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`);
+                    });
+                }
+            })
             .then(data => {
                 if (data.success) {
                     // Display the clean plain text format
