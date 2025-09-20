@@ -793,6 +793,17 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug endpoint for checking environment
+app.get('/debug-env', (req, res) => {
+  res.json({
+    openai_key_set: !!process.env.OPENAI_API_KEY,
+    openai_key_length: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0,
+    db_host_set: !!process.env.DB_HOST,
+    db_name: process.env.DB_NAME,
+    node_env: process.env.NODE_ENV
+  });
+});
+
 app.get('/get-ip', async (req, res) => {
   try {
     const https = require('https');
