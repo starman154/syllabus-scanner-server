@@ -632,6 +632,79 @@ app.get('/debug/env', (req, res) => {
   });
 });
 
+// Diagnostic endpoint to test system components
+app.get('/debug/system', async (req, res) => {
+  const diagnostics = {
+    timestamp: new Date().toISOString(),
+    pdftocairo: null,
+    poppler: null,
+    openai: null,
+    filesystem: null
+  };
+
+  try {
+    // Test pdftocairo command
+    try {
+      const { exec } = require('child_process');
+      await new Promise((resolve, reject) => {
+        exec('pdftocairo -v', (error, stdout, stderr) => {
+          if (error) {
+            diagnostics.pdftocairo = { available: false, error: error.message };
+          } else {
+            diagnostics.pdftocairo = { available: true, version: stderr || stdout };
+          }
+          resolve();
+        });
+      });
+    } catch (error) {
+      diagnostics.pdftocairo = { available: false, error: error.message };
+    }
+
+    // Test OpenAI API
+    try {
+      if (process.env.OPENAI_API_KEY) {
+        const OpenAI = require('openai');
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: 'Test message' }],
+          max_tokens: 5
+        });
+
+        diagnostics.openai = {
+          available: true,
+          keyValid: true,
+          response: response.choices[0].message.content
+        };
+      } else {
+        diagnostics.openai = { available: false, error: 'No API key' };
+      }
+    } catch (error) {
+      diagnostics.openai = { available: false, error: error.message };
+    }
+
+    // Test filesystem write permissions
+    try {
+      const fs = require('fs');
+      const testFile = '/tmp/test-write.txt';
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      diagnostics.filesystem = { writable: true };
+    } catch (error) {
+      diagnostics.filesystem = { writable: false, error: error.message };
+    }
+
+    res.json(diagnostics);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Diagnostic failed',
+      message: error.message,
+      diagnostics
+    });
+  }
+});
+
 app.use((error, req, res, next) => {
   logger.error('Unhandled error:', error);
 
