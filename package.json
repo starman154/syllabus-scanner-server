@@ -1,0 +1,34 @@
+{
+  "name": "syllabus-scanner-server",
+  "version": "1.0.0",
+  "description": "Node.js Express server for processing syllabus documents with OCR and AI parsing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "echo 'No build step needed'",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "express",
+    "syllabus",
+    "ocr",
+    "openai",
+    "google-cloud-vision"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "multer": "^2.0.0-rc.4",
+    "mysql2": "^3.15.0",
+    "openai": "^4.20.1",
+    "pdf-poppler": "^0.2.1",
+    "sqlite3": "^5.1.7",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
