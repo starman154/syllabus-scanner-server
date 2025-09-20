@@ -71,6 +71,7 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
 async function analyzeTextWithOpenAI(text) {
   const completion = await openai.chat.completions.create({
