@@ -6,6 +6,7 @@ const winston = require('winston');
 const OpenAI = require('openai');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
@@ -559,54 +560,34 @@ app.post('/api/scan-syllabus', upload.single('syllabus'), async (req, res) => {
       });
     }
 
-    logger.info(`Processing file: ${req.file.filename}`);
+    // Generate unique job ID
+    const jobId = crypto.randomUUID();
+    const userId = req.headers['user-id'] || 'anonymous';
 
-    const aiResponse = await analyzeSyllabusWithOpenAI(req.file.path);
+    logger.info(`Creating job ${jobId} for file: ${req.file.filename}`);
 
-    // Parse the AI response to extract structured data
-    const { courseData, assignments } = parseSyllabusData(aiResponse.plain_text || aiResponse);
-
-    // Save to database
-    let courseId = null;
-    let savedAssignments = [];
-
-    try {
-      // Only save to database if connection exists
-      if (activeDatabase) {
-        // Save course information
-        courseId = await activeDatabase.saveCourse(courseData);
-        logger.info(`Course saved with ID: ${courseId}`);
-
-        // Save assignments
-        if (assignments.length > 0) {
-          savedAssignments = await activeDatabase.saveMultipleAssignments(courseId, assignments);
-          logger.info(`Saved ${savedAssignments.length} assignments`);
-        }
-      } else {
-        logger.info('Skipping database save - no database connection');
-      }
-    } catch (dbError) {
-      logger.error('Database save error:', dbError);
-      // Continue with response even if DB save fails
+    // Create job record in database
+    if (activeDatabase) {
+      await activeDatabase.createJob(jobId, userId, req.file.filename, req.file.path);
+      logger.info(`Job ${jobId} created successfully`);
+    } else {
+      logger.error('No database connection available');
+      return res.status(500).json({
+        error: 'Database unavailable',
+        message: 'Cannot create job - database connection failed'
+      });
     }
 
-    // Clean up uploaded file
-    fs.unlink(req.file.path, (err) => {
-      if (err) logger.error('Error deleting uploaded file:', err);
-    });
-
-    logger.info('Successfully processed syllabus');
-
+    // Return job ID immediately
     res.json({
       success: true,
-      data: aiResponse,
-      course_id: courseId,
-      assignments_saved: savedAssignments.length,
-      message: 'Syllabus analyzed and saved successfully'
+      job_id: jobId,
+      status: 'pending',
+      message: 'Job created successfully. Use the job ID to check processing status.'
     });
 
   } catch (error) {
-    logger.error('Error processing syllabus:', error);
+    logger.error('Error creating job:', error);
     logger.error('Error stack:', error.stack);
     logger.error('File info:', req.file ? {
       filename: req.file.filename,
@@ -623,7 +604,72 @@ app.post('/api/scan-syllabus', upload.single('syllabus'), async (req, res) => {
     }
 
     res.status(500).json({
-      error: 'Processing failed',
+      error: 'Job creation failed',
+      message: error.message || 'An unexpected error occurred',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Job status check endpoint
+app.get('/api/job-status/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    if (!jobId) {
+      return res.status(400).json({
+        error: 'Missing job ID',
+        message: 'Please provide a valid job ID'
+      });
+    }
+
+    logger.info(`Checking status for job: ${jobId}`);
+
+    // Get job from database
+    if (!activeDatabase) {
+      return res.status(500).json({
+        error: 'Database unavailable',
+        message: 'Cannot check job status - database connection failed'
+      });
+    }
+
+    const job = await activeDatabase.getJobById(jobId);
+
+    if (!job) {
+      return res.status(404).json({
+        error: 'Job not found',
+        message: 'No job found with the provided ID'
+      });
+    }
+
+    // Parse result data if it exists
+    let resultData = null;
+    if (job.result_data) {
+      try {
+        resultData = JSON.parse(job.result_data);
+      } catch (parseError) {
+        logger.error('Error parsing job result data:', parseError);
+        resultData = job.result_data;
+      }
+    }
+
+    res.json({
+      success: true,
+      job_id: job.id,
+      status: job.status,
+      created_at: job.created_at,
+      updated_at: job.updated_at,
+      completed_at: job.completed_at,
+      file_name: job.file_name,
+      error_message: job.error_message,
+      data: resultData,
+      course_id: job.course_id
+    });
+
+  } catch (error) {
+    logger.error('Error checking job status:', error);
+    res.status(500).json({
+      error: 'Status check failed',
       message: error.message || 'An unexpected error occurred',
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });

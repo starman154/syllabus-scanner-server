@@ -66,6 +66,26 @@ class Database {
                 )
             `);
 
+            await this.connection.execute(`
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(255),
+                    status ENUM('pending', 'processing', 'completed', 'failed') DEFAULT 'pending',
+                    file_name VARCHAR(255),
+                    file_path VARCHAR(500),
+                    result_data LONGTEXT,
+                    error_message TEXT,
+                    course_id INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP NULL,
+                    INDEX idx_user_id (user_id),
+                    INDEX idx_status (status),
+                    INDEX idx_created_at (created_at),
+                    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE SET NULL
+                )
+            `);
+
             console.log('✅ Database tables created/verified');
         } catch (error) {
             console.error('❌ Failed to create tables:', error.message);
@@ -152,6 +172,99 @@ class Database {
             return rows;
         } catch (error) {
             console.error('❌ Failed to get assignments:', error.message);
+            throw error;
+        }
+    }
+
+    async createJob(jobId, userId, fileName, filePath) {
+        try {
+            await this.connection.execute(`
+                INSERT INTO jobs (id, user_id, file_name, file_path, status)
+                VALUES (?, ?, ?, ?, 'pending')
+            `, [jobId, userId || 'anonymous', fileName, filePath]);
+
+            console.log(`✅ Job created with ID: ${jobId}`);
+            return jobId;
+        } catch (error) {
+            console.error('❌ Failed to create job:', error.message);
+            throw error;
+        }
+    }
+
+    async updateJobStatus(jobId, status) {
+        try {
+            await this.connection.execute(`
+                UPDATE jobs SET status = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `, [status, jobId]);
+
+            console.log(`✅ Job ${jobId} status updated to: ${status}`);
+        } catch (error) {
+            console.error('❌ Failed to update job status:', error.message);
+            throw error;
+        }
+    }
+
+    async getJobById(jobId) {
+        try {
+            const [rows] = await this.connection.execute(`
+                SELECT * FROM jobs WHERE id = ?
+            `, [jobId]);
+            return rows[0] || null;
+        } catch (error) {
+            console.error('❌ Failed to get job:', error.message);
+            throw error;
+        }
+    }
+
+    async updateJobResult(jobId, resultData, courseId = null) {
+        try {
+            await this.connection.execute(`
+                UPDATE jobs SET
+                    status = 'completed',
+                    result_data = ?,
+                    course_id = ?,
+                    completed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `, [JSON.stringify(resultData), courseId, jobId]);
+
+            console.log(`✅ Job ${jobId} completed successfully`);
+        } catch (error) {
+            console.error('❌ Failed to update job result:', error.message);
+            throw error;
+        }
+    }
+
+    async updateJobError(jobId, errorMessage) {
+        try {
+            await this.connection.execute(`
+                UPDATE jobs SET
+                    status = 'failed',
+                    error_message = ?,
+                    completed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `, [errorMessage, jobId]);
+
+            console.log(`❌ Job ${jobId} failed: ${errorMessage}`);
+        } catch (error) {
+            console.error('❌ Failed to update job error:', error.message);
+            throw error;
+        }
+    }
+
+    async getPendingJobs(limit = 10) {
+        try {
+            const [rows] = await this.connection.execute(`
+                SELECT * FROM jobs
+                WHERE status = 'pending'
+                ORDER BY created_at ASC
+                LIMIT ?
+            `, [limit]);
+            return rows;
+        } catch (error) {
+            console.error('❌ Failed to get pending jobs:', error.message);
             throw error;
         }
     }
