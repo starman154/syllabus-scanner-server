@@ -630,19 +630,9 @@ app.post('/api/scan-syllabus', upload.single('syllabus'), async (req, res) => {
   }
 });
 
-// Root route to fix "Cannot GET /" error
+// Root route - serve the web interface
 app.get('/', (req, res) => {
-  res.json({
-    message: 'Syllabus Scanner Server',
-    status: 'Running',
-    endpoints: {
-      health: '/health',
-      scan: '/api/scan-syllabus',
-      diagnostics: '/debug/system',
-      environment: '/debug/env'
-    },
-    timestamp: new Date().toISOString()
-  });
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get('/health', (req, res) => {
