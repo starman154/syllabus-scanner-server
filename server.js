@@ -9,7 +9,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
-const pdf2pic = require('pdf2pic');
+const pdfParse = require('pdf-parse');
 const database = require('./database');
 const sqliteDatabase = require('./database-sqlite');
 
@@ -71,6 +71,73 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json());
+
+async function analyzeTextWithOpenAI(text) {
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: "You are a helpful assistant that extracts structured data from syllabi. Analyze the text and return the information in clean, readable plain text format."
+      },
+      {
+        role: "user",
+        content: `You are a COMPREHENSIVE syllabus analyzer trained to extract ALL student-essential information. Use this TRAINING EXAMPLE to understand what students need:
+
+TRAINING EXAMPLE - ANT 141 Syllabus shows students need:
+✓ Basic Info: "Introduction to Archaeology", "Professor C. R. DeCorse", "crdecorse@maxwell.syr.edu", "Mondays & Wednesdays 12:45-1:40", "2-5:00 Mon., Wed.; 12-2:00 Fri."
+✓ Test Dates: "Monday, September 29", "Monday, November 3", "Tuesday, December 16, 10:15 AM - 12:15 PM"
+✓ Assignment Deadlines: "Discussion section participation 40%", "Quizzes, exercises, film study guides"
+✓ Weekly Readings: "Record of the Past: An Introduction to Archaeology, 4th Edition", "Chapter 1", "Chapters 2 & 3"
+✓ Major Deliverables: "Two in-class exams (20% each)", "Final exam (20%)", "Discussion section grade (40%)"
+✓ Important Dates: "Labor Day September 1 (no class)", "Fall Break October 14-15", "Thanksgiving November 23-30"
+
+SPECIFIC ASSIGNMENT PATTERNS TO WATCH FOR:
+• "In Class Writing Assignment" + dates: "Monday, Sept. 9", "Wednesday, Sept. 18"
+• "ICWA" assignments with specific deadlines
+• Homework assignments with due dates
+• Project milestones and final deadlines
+• Reading assignments by week/date
+• Quiz and exam schedules
+• Discussion posts and participation requirements
+
+EXTRACT FROM THIS SYLLABUS TEXT:
+
+${text}
+
+RETURN IN THIS CLEAN FORMAT:
+Course: [Course Name and Number]
+Professor: [Name]
+Email: [Email]
+Meeting Times: [Days and times]
+Office Hours: [Times]
+
+Important Dates:
+- [Date]: [Event description]
+- [Date]: [Event description]
+
+Assignments & Due Dates:
+- [Date]: [Assignment name and details]
+- [Date]: [Assignment name and details]
+
+Tests & Exams:
+- [Date]: [Test/exam details]
+- [Date]: [Test/exam details]
+
+Reading Schedule:
+- Week/Date: [Reading assignment]
+- Week/Date: [Reading assignment]
+
+Additional Information:
+[Any other important student information like grading, policies, etc.]`
+      }
+    ],
+    temperature: 0.2,
+    max_tokens: 2000
+  });
+
+  return completion.choices[0].message.content;
+}
 
 async function analyzePageWithOpenAI(imagePath) {
   const imageBuffer = fs.readFileSync(imagePath);
@@ -324,87 +391,27 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
       const outputFile = path.join(outputDir, `converted-${Date.now()}.jpg`);
 
       try {
-        // Convert PDF to images using pdf2pic (serverless-compatible)
-        const outputDir = path.dirname(imagePath);
-        const convert = pdf2pic.fromPath(imagePath, {
-          density: 300,           // 300 DPI for high quality
-          saveFilename: "converted",
-          savePath: outputDir,
-          format: "jpg",
-          width: 2048,           // High resolution for better OCR
-          height: 2048
-        });
+        // Extract text from PDF using pdf-parse (serverless-compatible)
+        const dataBuffer = fs.readFileSync(imagePath);
+        const pdfData = await pdfParse(dataBuffer);
 
-        // Convert all pages
-        const results = await convert.bulk(-1); // -1 means convert all pages
+        logger.info(`PDF text extracted: ${pdfData.text.length} characters`);
 
-        // Get the file paths from results
-        const filePaths = results.map(result => result.path).sort();\n        const files = filePaths.map(fullPath => path.basename(fullPath));
+        // Analyze the extracted text directly with OpenAI
+        const result = await analyzeTextWithOpenAI(pdfData.text);
 
-        logger.info(`PDF converted to ${files.length} pages using pdf2pic`);
-
-        // Multi-page analysis for comprehensive extraction
-        logger.info(`Multi-page analysis: analyzing all ${files.length} pages for complete information extraction.`);
-
-        // Analyze ALL pages for comprehensive extraction
-        if (files.length > 1) {
-          logger.info(`Multi-page PDF detected - analyzing all ${files.length} pages`);
-
-          const allPageData = [];
-
-          // Analyze key pages only (first 2 pages + last 2 pages) for speed
-          const keyPages = [];
-
-          // Always analyze first 2 pages (contact info + assignments)
-          keyPages.push(0); // Page 1: contact info
-          if (files.length > 1) keyPages.push(1); // Page 2: assignments
-
-          // Add last 2 pages if document is longer (often contain schedules/dates)
-          if (files.length > 2) {
-            for (let i = Math.max(2, files.length - 2); i < files.length; i++) {
-              if (!keyPages.includes(i)) keyPages.push(i);
-            }
-          }
-
-          logger.info(`Analyzing ${keyPages.length} key pages out of ${files.length} total pages for optimal speed`);
-
-          // Analyze key pages in parallel for maximum speed
-          logger.info(`Starting parallel analysis of ${keyPages.length} pages`);
-
-          const pageAnalysisPromises = keyPages.map(async (i) => {
-            const pageNumber = i + 1;
-            const pagePath = filePaths[i];
-
-            logger.info(`Starting analysis of page ${pageNumber}: ${pagePath}`);
-            const pageData = await analyzePageWithOpenAI(pagePath);
-            logger.info(`Completed analysis of page ${pageNumber}`);
-            return { pageNumber, data: pageData };
-          });
-
-          // Wait for all pages to complete in parallel
-          const parallelResults = await Promise.all(pageAnalysisPromises);
-          allPageData.push(...parallelResults);
-
-          logger.info('All parallel page analyses complete');
-
-          // Combine results from all pages
-          const combinedResult = combineAllResults(allPageData);
-          logger.info('Combined all-page analysis complete');
-
-          // Clean up converted PDF images
-          filePaths.forEach(filePath => {
-            fs.unlink(filePath, (err) => {
-              if (err) logger.error('Error deleting converted PDF image:', err);
-            });
-          });
-
-          return combinedResult;
-        } else {
-          // Single page - use original single-page analysis
-          processedImagePath = filePaths[0];
+        // Clean up and return result
+        try {
+          fs.unlinkSync(imagePath);
+        } catch (cleanupError) {
+          logger.error('Error deleting PDF file:', cleanupError);
         }
+
+        return result;
+
+        // PDF text extraction complete - result already returned above
       } catch (pdfError) {
-        logger.error('Error converting PDF:', pdfError);
+        logger.error('Error processing PDF:', pdfError);
         throw new Error('Failed to process PDF. Please try uploading an image (JPG/PNG) of your syllabus instead.');
       }
     }
