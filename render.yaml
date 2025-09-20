@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: syllabus-scanner-server
+    env: node
+    buildCommand: |
+      apt-get update
+      apt-get install -y poppler-utils
+      npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
