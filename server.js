@@ -510,7 +510,7 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
       });
     }
 
-    throw new Error('Failed to analyze syllabus');
+    throw new Error(`Failed to analyze syllabus: ${error.message}`);
   }
 }
 
