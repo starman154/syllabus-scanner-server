@@ -37,8 +37,8 @@ const logger = winston.createLogger({
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 60000, // 60 second timeout for cloud environments
-  maxRetries: 3,  // Retry failed requests up to 3 times
+  timeout: 25000, // 25 second timeout to fit within Vercel's 30s limit
+  maxRetries: 1,  // Reduce retries to save time
 });
 
 const storage = multer.diskStorage({
