@@ -10,29 +10,52 @@ const dbConfig = {
     ssl: {
         rejectUnauthorized: false
     },
-    connectTimeout: 20000
+    connectTimeout: 20000,
+    acquireTimeout: 20000,
+    timeout: 20000,
+    reconnect: true
 };
 
 class Database {
     constructor() {
-        this.connection = null;
+        this.pool = null;
     }
 
     async connect() {
         try {
-            this.connection = await mysql.createConnection(dbConfig);
-            console.log('✅ Connected to AWS RDS MySQL database');
+            this.pool = mysql.createPool({
+                ...dbConfig,
+                waitForConnections: true,
+                connectionLimit: 5,
+                queueLimit: 0,
+                idleTimeout: 60000,
+                acquireTimeout: 20000
+            });
+
+            // Test the connection
+            const connection = await this.pool.getConnection();
+            await connection.ping();
+            connection.release();
+
+            console.log('✅ Connected to AWS RDS MySQL database with connection pool');
             await this.createTables();
-            return this.connection;
+            return this.pool;
         } catch (error) {
             console.error('❌ Database connection failed:', error.message);
             throw error;
         }
     }
 
+    async getConnection() {
+        if (!this.pool) {
+            throw new Error('Database pool not initialized');
+        }
+        return await this.pool.getConnection();
+    }
+
     async createTables() {
         try {
-            await this.connection.execute(`
+            await this.pool.execute(`
                 CREATE TABLE IF NOT EXISTS courses (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     user_id VARCHAR(255),
@@ -48,7 +71,7 @@ class Database {
                 )
             `);
 
-            await this.connection.execute(`
+            await this.pool.execute(`
                 CREATE TABLE IF NOT EXISTS assignments (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     course_id INT,
@@ -66,7 +89,7 @@ class Database {
                 )
             `);
 
-            await this.connection.execute(`
+            await this.pool.execute(`
                 CREATE TABLE IF NOT EXISTS jobs (
                     id VARCHAR(36) PRIMARY KEY,
                     user_id VARCHAR(255),
@@ -178,7 +201,7 @@ class Database {
 
     async createJob(jobId, userId, fileName, filePath) {
         try {
-            await this.connection.execute(`
+            await this.pool.execute(`
                 INSERT INTO jobs (id, user_id, file_name, file_path, status)
                 VALUES (?, ?, ?, ?, 'pending')
             `, [jobId, userId || 'anonymous', fileName, filePath]);
@@ -193,7 +216,7 @@ class Database {
 
     async updateJobStatus(jobId, status) {
         try {
-            await this.connection.execute(`
+            await this.pool.execute(`
                 UPDATE jobs SET status = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             `, [status, jobId]);
@@ -219,7 +242,7 @@ class Database {
 
     async updateJobResult(jobId, resultData, courseId = null) {
         try {
-            await this.connection.execute(`
+            await this.pool.execute(`
                 UPDATE jobs SET
                     status = 'completed',
                     result_data = ?,
@@ -238,7 +261,7 @@ class Database {
 
     async updateJobError(jobId, errorMessage) {
         try {
-            await this.connection.execute(`
+            await this.pool.execute(`
                 UPDATE jobs SET
                     status = 'failed',
                     error_message = ?,
@@ -270,9 +293,9 @@ class Database {
     }
 
     async close() {
-        if (this.connection) {
-            await this.connection.end();
-            console.log('🔌 Database connection closed');
+        if (this.pool) {
+            await this.pool.end();
+            console.log('🔌 Database connection pool closed');
         }
     }
 }
