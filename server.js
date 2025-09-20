@@ -689,6 +689,39 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/get-ip', async (req, res) => {
+  try {
+    const https = require('https');
+    const response = await new Promise((resolve, reject) => {
+      const req = https.get('https://api.ipify.org', (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          resolve(data);
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(10000, () => {
+        req.destroy();
+        reject(new Error('Timeout'));
+      });
+    });
+
+    res.json({
+      ip: response,
+      timestamp: new Date().toISOString(),
+      service: 'syllabus-scanner-server'
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get IP',
+      message: error.message
+    });
+  }
+});
+
 // Debug endpoint to check environment variables
 app.get('/debug/env', (req, res) => {
   res.json({
