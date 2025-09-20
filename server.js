@@ -9,6 +9,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(exec);
+const pdf2pic = require('pdf2pic');
 const database = require('./database');
 const sqliteDatabase = require('./database-sqlite');
 
@@ -323,18 +324,24 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
       const outputFile = path.join(outputDir, `converted-${Date.now()}.jpg`);
 
       try {
-        const baseOutputFile = outputFile.replace('.jpg', '');
-        // Convert all pages to higher resolution JPEG for complete document analysis
-        const command = `/opt/homebrew/bin/pdftocairo -jpeg -scale-to 2048 "${imagePath}" "${baseOutputFile}"`;
-        await execAsync(command);
+        // Convert PDF to images using pdf2pic (serverless-compatible)
+        const outputDir = path.dirname(imagePath);
+        const convert = pdf2pic.fromPath(imagePath, {
+          density: 300,           // 300 DPI for high quality
+          saveFilename: "converted",
+          savePath: outputDir,
+          format: "jpg",
+          width: 2048,           // High resolution for better OCR
+          height: 2048
+        });
 
-        // Check how many pages were created and analyze all pages
-        const outputDir = path.dirname(baseOutputFile);
-        const files = fs.readdirSync(outputDir)
-          .filter(f => f.startsWith(path.basename(baseOutputFile)) && f.endsWith('.jpg'))
-          .sort(); // Sort to ensure proper page order
+        // Convert all pages
+        const results = await convert.bulk(-1); // -1 means convert all pages
 
-        logger.info(`PDF converted to ${files.length} pages`);
+        // Get the file paths from results
+        const filePaths = results.map(result => result.path).sort();\n        const files = filePaths.map(fullPath => path.basename(fullPath));
+
+        logger.info(`PDF converted to ${files.length} pages using pdf2pic`);
 
         // Multi-page analysis for comprehensive extraction
         logger.info(`Multi-page analysis: analyzing all ${files.length} pages for complete information extraction.`);
@@ -366,7 +373,7 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
 
           const pageAnalysisPromises = keyPages.map(async (i) => {
             const pageNumber = i + 1;
-            const pagePath = path.join(outputDir, files[i]);
+            const pagePath = filePaths[i];
 
             logger.info(`Starting analysis of page ${pageNumber}: ${pagePath}`);
             const pageData = await analyzePageWithOpenAI(pagePath);
@@ -385,8 +392,7 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
           logger.info('Combined all-page analysis complete');
 
           // Clean up converted PDF images
-          files.forEach(file => {
-            const filePath = path.join(outputDir, file);
+          filePaths.forEach(filePath => {
             fs.unlink(filePath, (err) => {
               if (err) logger.error('Error deleting converted PDF image:', err);
             });
@@ -395,7 +401,7 @@ async function analyzeSyllabusWithOpenAI(imagePath) {
           return combinedResult;
         } else {
           // Single page - use original single-page analysis
-          processedImagePath = path.join(outputDir, files[0]);
+          processedImagePath = filePaths[0];
         }
       } catch (pdfError) {
         logger.error('Error converting PDF:', pdfError);
