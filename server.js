@@ -81,6 +81,68 @@ async function analyzeImageWithOpenAI(fileBuffer, fileExtension) {
   }
 }
 
+// PDF Vision fallback function
+async function analyzePDFWithVision(fileBuffer) {
+  logger.info(`Using OpenAI Vision API for PDF processing...`);
+
+  // Convert PDF buffer to base64
+  const base64PDF = fileBuffer.toString('base64');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: `Please analyze this PDF syllabus and extract key information in a structured format. Return a JSON object with the following structure:
+
+{
+  "course_name": "Course title",
+  "professor_name": "Professor name",
+  "professor_email": "Professor email",
+  "meeting_days": "Days and times when class meets",
+  "office_hours": "Professor's office hours",
+  "assignments": [
+    {
+      "title": "Assignment name",
+      "due_date": "YYYY-MM-DD",
+      "due_time": "HH:MM:SS",
+      "type": "exam|assignment|reading|project|quiz|other",
+      "description": "Assignment description"
+    }
+  ],
+  "plain_text": "Clean, formatted version of the syllabus text"
+}`
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:application/pdf;base64,${base64PDF}`
+            }
+          }
+        ]
+      }
+    ],
+    temperature: 0.3,
+    max_tokens: 4000
+  });
+
+  const content = response.choices[0].message.content;
+
+  try {
+    return JSON.parse(content);
+  } catch (parseError) {
+    logger.error('❌ Failed to parse OpenAI PDF vision response as JSON:', parseError);
+    return {
+      plain_text: content,
+      error: 'Failed to parse structured data',
+      raw_response: content
+    };
+  }
+}
+
 // Syllabus processing functions
 async function analyzeSyllabusWithOpenAI(filePath) {
   logger.info(`Reading file: ${filePath}`);
@@ -102,15 +164,23 @@ async function analyzeSyllabusWithOpenAI(filePath) {
   let data;
   try {
     logger.info(`Attempting to parse PDF...`);
-    data = await pdfParse(fileBuffer);
+    data = await pdfParse(fileBuffer, {
+      // Add options to handle various PDF types
+      normalizeWhitespace: false,
+      disableCombineTextItems: false
+    });
     logger.info(`Successfully extracted ${data.text.length} characters from PDF`);
 
     if (data.text.length === 0) {
-      throw new Error('PDF parsing resulted in empty text. The PDF might be image-based or password-protected.');
+      logger.info('PDF parsing resulted in empty text - trying OpenAI vision as fallback...');
+      // Convert PDF to image and use OpenAI Vision as fallback
+      return await analyzePDFWithVision(fileBuffer);
     }
   } catch (pdfError) {
     logger.error(`PDF parsing failed:`, pdfError.message);
-    throw new Error(`Failed to process PDF. Please try uploading an image (JPG/PNG) of your syllabus instead.`);
+    logger.info('PDF parsing failed - trying OpenAI vision as fallback...');
+    // Use OpenAI Vision as fallback for image-based PDFs
+    return await analyzePDFWithVision(fileBuffer);
   }
 
   const prompt = `Please analyze this syllabus text and extract key information in a structured format. Return a JSON object with the following structure:
