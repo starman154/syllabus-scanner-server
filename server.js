@@ -23,9 +23,20 @@ async function analyzeSyllabusWithOpenAI(filePath) {
   }
 
   const fileBuffer = fs.readFileSync(filePath);
-  const data = await pdfParse(fileBuffer);
+  let data;
 
-  logger.info(`Extracted ${data.text.length} characters from PDF`);
+  try {
+    logger.info(`Attempting to parse PDF...`);
+    data = await pdfParse(fileBuffer);
+    logger.info(`Successfully extracted ${data.text.length} characters from PDF`);
+
+    if (data.text.length === 0) {
+      throw new Error('PDF parsing resulted in empty text. The PDF might be image-based or password-protected.');
+    }
+  } catch (pdfError) {
+    logger.error(`PDF parsing failed:`, pdfError.message);
+    throw new Error(`Failed to process PDF. Please try uploading an image (JPG/PNG) of your syllabus instead.`);
+  }
 
   const prompt = `Please analyze this syllabus text and extract key information in a structured format. Return a JSON object with the following structure:
 
