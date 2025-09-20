@@ -14,6 +14,77 @@ const pdfParse = require('pdf-parse');
 const database = require('./database');
 const sqliteDatabase = require('./database-sqlite');
 
+// Syllabus processing functions
+async function analyzeSyllabusWithOpenAI(filePath) {
+  logger.info(`Reading file: ${filePath}`);
+
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  const fileBuffer = fs.readFileSync(filePath);
+  const data = await pdfParse(fileBuffer);
+
+  logger.info(`Extracted ${data.text.length} characters from PDF`);
+
+  const prompt = `Please analyze this syllabus text and extract key information in a structured format. Return a JSON object with the following structure:
+
+{
+  "course_name": "Course title",
+  "professor_name": "Professor name",
+  "professor_email": "Professor email",
+  "meeting_days": "Days and times when class meets",
+  "office_hours": "Professor's office hours",
+  "assignments": [
+    {
+      "title": "Assignment name",
+      "due_date": "YYYY-MM-DD",
+      "due_time": "HH:MM:SS",
+      "type": "exam|assignment|reading|project|quiz|other",
+      "description": "Assignment description"
+    }
+  ],
+  "plain_text": "Clean, formatted version of the syllabus text"
+}
+
+Syllabus text:
+${data.text}`;
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+  });
+
+  const content = response.choices[0].message.content;
+
+  try {
+    return JSON.parse(content);
+  } catch (parseError) {
+    logger.error('Failed to parse OpenAI response as JSON:', parseError);
+    return {
+      plain_text: content,
+      error: 'Failed to parse structured data',
+      raw_response: content
+    };
+  }
+}
+
+function parseSyllabusData(aiResponse) {
+  const courseData = {
+    course_name: aiResponse.course_name || 'Unknown Course',
+    professor_name: aiResponse.professor_name || 'Unknown Professor',
+    professor_email: aiResponse.professor_email || null,
+    meeting_days: aiResponse.meeting_days || null,
+    office_hours: aiResponse.office_hours || null,
+    syllabus_text: aiResponse.plain_text || JSON.stringify(aiResponse)
+  };
+
+  const assignments = Array.isArray(aiResponse.assignments) ? aiResponse.assignments : [];
+
+  return { courseData, assignments };
+}
+
 dotenv.config();
 
 const app = express();
@@ -560,31 +631,64 @@ app.post('/api/scan-syllabus', upload.single('syllabus'), async (req, res) => {
       });
     }
 
-    // Generate unique job ID
-    const jobId = crypto.randomUUID();
     const userId = req.headers['user-id'] || 'anonymous';
+    logger.info(`Processing syllabus file: ${req.file.filename}`);
 
-    logger.info(`Creating job ${jobId} for file: ${req.file.filename}`);
+    // Process the syllabus immediately
+    try {
+      // Check database connection
+      if (!activeDatabase) {
+        throw new Error('Database connection unavailable');
+      }
 
-    // Create job record in database
-    if (activeDatabase) {
-      await activeDatabase.createJob(jobId, userId, req.file.filename, req.file.path);
-      logger.info(`Job ${jobId} created successfully`);
-    } else {
-      logger.error('No database connection available');
-      return res.status(500).json({
-        error: 'Database unavailable',
-        message: 'Cannot create job - database connection failed'
+      // Analyze the PDF with OpenAI
+      const aiResponse = await analyzeSyllabusWithOpenAI(req.file.path);
+
+      // Parse the AI response to extract structured data
+      const { courseData, assignments } = parseSyllabusData(aiResponse);
+
+      // Add user_id to course data
+      courseData.user_id = userId;
+
+      // Save course and assignments to database
+      const courseId = await activeDatabase.saveCourse(courseData);
+      logger.info(`Course saved with ID: ${courseId}`);
+
+      let savedAssignments = [];
+      if (assignments.length > 0) {
+        savedAssignments = await activeDatabase.saveMultipleAssignments(courseId, assignments);
+        logger.info(`Saved ${savedAssignments.length} assignments`);
+      }
+
+      // Clean up uploaded file
+      fs.unlink(req.file.path, (err) => {
+        if (err) logger.error('Error deleting processed file:', err);
       });
-    }
 
-    // Return job ID immediately
-    res.json({
-      success: true,
-      job_id: jobId,
-      status: 'pending',
-      message: 'Job created successfully. Use the job ID to check processing status.'
-    });
+      // Return success with extracted data
+      res.json({
+        success: true,
+        message: 'Syllabus processed successfully!',
+        course: {
+          id: courseId,
+          name: courseData.course_name,
+          professor: courseData.professor_name,
+          email: courseData.professor_email
+        },
+        assignments: assignments.length,
+        assignments_saved: savedAssignments.length
+      });
+
+    } catch (processingError) {
+      logger.error('Syllabus processing failed:', processingError);
+
+      // Clean up uploaded file on error
+      fs.unlink(req.file.path, (err) => {
+        if (err) logger.error('Error deleting uploaded file on error:', err);
+      });
+
+      throw processingError;
+    }
 
   } catch (error) {
     logger.error('Error creating job:', error);
