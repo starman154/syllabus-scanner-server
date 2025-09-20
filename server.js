@@ -816,9 +816,10 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Syllabus Scanner Server running on port ${PORT}`);
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`External access: http://[YOUR_VPS_IP]:${PORT}`);
   });
 }
 

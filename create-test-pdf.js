@@ -1,0 +1,52 @@
+// Simple script to create a test PDF from our syllabus text
+const fs = require('fs');
+
+// For this test, we'll create a simple HTML file that can be "printed" to PDF
+// Or we can use a simple text-to-PDF approach if needed
+const syllabusText = `CS 101 - Introduction to Computer Science
+Professor: Dr. Jane Smith
+Email: jane.smith@university.edu
+Meeting Times: Monday, Wednesday, Friday 10:00-11:00 AM
+Office Hours: Tuesday 2:00-4:00 PM
+
+Important Dates:
+- Midterm Exam: March 15, 2024
+- Final Project Due: April 20, 2024
+- Final Exam: May 10, 2024
+
+Assignments & Due Dates:
+- Homework 1 Due: February 5, 2024
+- Homework 2 Due: February 19, 2024
+- Lab Report Due: March 1, 2024
+
+Reading Schedule:
+- Week 1: Chapter 1 - Introduction to Programming
+- Week 2: Chapter 2 - Variables and Data Types
+- Week 3: Chapter 3 - Control Structures
+
+Grading:
+- Homework: 30%
+- Midterm: 25%
+- Final Project: 25%
+- Final Exam: 20%`;
+
+// Create an HTML version for easier PDF creation
+const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Syllabus</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <pre>${syllabusText}</pre>
+</body>
+</html>`;
+
+fs.writeFileSync('test-syllabus.html', htmlContent);
+console.log('Created test-syllabus.html');
+console.log('You can convert this to PDF using:');
+console.log('- Browser: Open in browser and Print > Save as PDF');
+console.log('- macOS: Use "textutil" or "wkhtmltopdf" if installed');

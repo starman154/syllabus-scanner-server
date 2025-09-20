@@ -164,6 +164,22 @@ class SQLiteDatabase {
         });
     }
 
+    async createJob(jobId, userId, fileName, filePath) {
+        // For SQLite mode, we'll process immediately without jobs table
+        // Just return the jobId for compatibility
+        console.log(`✅ Job created with ID: ${jobId} (SQLite mode - direct processing)`);
+        return jobId;
+    }
+
+    async getJobById(jobId) {
+        // For SQLite mode, return a mock completed job
+        return {
+            id: jobId,
+            status: 'completed',
+            result_data: JSON.stringify({ processed: true })
+        };
+    }
+
     async close() {
         return new Promise((resolve) => {
             if (this.db) {
