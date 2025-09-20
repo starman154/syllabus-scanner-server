@@ -14,6 +14,73 @@ const pdfParse = require('pdf-parse');
 const database = require('./database');
 const sqliteDatabase = require('./database-sqlite');
 
+// Image analysis function
+async function analyzeImageWithOpenAI(fileBuffer, fileExtension) {
+  logger.info(`Analyzing image with OpenAI Vision API...`);
+
+  // Convert buffer to base64
+  const base64Image = fileBuffer.toString('base64');
+  const mimeType = fileExtension === '.jpg' || fileExtension === '.jpeg' ? 'image/jpeg' :
+                   fileExtension === '.png' ? 'image/png' :
+                   fileExtension === '.gif' ? 'image/gif' :
+                   fileExtension === '.bmp' ? 'image/bmp' :
+                   fileExtension === '.webp' ? 'image/webp' : 'image/jpeg';
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: `Please analyze this syllabus image and extract key information in a structured format. Return a JSON object with the following structure:
+
+{
+  "course_name": "Course title",
+  "professor_name": "Professor name",
+  "professor_email": "Professor email",
+  "meeting_days": "Days and times when class meets",
+  "office_hours": "Professor's office hours",
+  "assignments": [
+    {
+      "title": "Assignment name",
+      "due_date": "YYYY-MM-DD",
+      "due_time": "HH:MM:SS",
+      "type": "exam|assignment|reading|project|quiz|other",
+      "description": "Assignment description"
+    }
+  ],
+  "plain_text": "Clean, formatted version of the syllabus text"
+}`
+          },
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${base64Image}`
+            }
+          }
+        ]
+      }
+    ],
+    temperature: 0.3,
+    max_tokens: 4000
+  });
+
+  const content = response.choices[0].message.content;
+
+  try {
+    return JSON.parse(content);
+  } catch (parseError) {
+    logger.error('❌ Failed to parse OpenAI image response as JSON:', parseError);
+    return {
+      plain_text: content,
+      error: 'Failed to parse structured data',
+      raw_response: content
+    };
+  }
+}
+
 // Syllabus processing functions
 async function analyzeSyllabusWithOpenAI(filePath) {
   logger.info(`Reading file: ${filePath}`);
@@ -22,9 +89,17 @@ async function analyzeSyllabusWithOpenAI(filePath) {
     throw new Error(`File not found: ${filePath}`);
   }
 
+  const fileExtension = path.extname(filePath).toLowerCase();
   const fileBuffer = fs.readFileSync(filePath);
-  let data;
 
+  // Check if it's an image file
+  if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(fileExtension)) {
+    logger.info(`Processing image file: ${fileExtension}`);
+    return await analyzeImageWithOpenAI(fileBuffer, fileExtension);
+  }
+
+  // Process as PDF
+  let data;
   try {
     logger.info(`Attempting to parse PDF...`);
     data = await pdfParse(fileBuffer);
