@@ -36,6 +36,8 @@ const logger = winston.createLogger({
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  timeout: 60000, // 60 second timeout for cloud environments
+  maxRetries: 3,  // Retry failed requests up to 3 times
 });
 
 const storage = multer.diskStorage({
@@ -664,7 +666,11 @@ app.get('/debug/system', async (req, res) => {
     try {
       if (process.env.OPENAI_API_KEY) {
         const OpenAI = require('openai');
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const openai = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY,
+          timeout: 60000,
+          maxRetries: 3
+        });
 
         const response = await openai.chat.completions.create({
           model: 'gpt-4o',
