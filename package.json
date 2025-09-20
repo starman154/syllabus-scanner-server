@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "build": "echo 'No build step needed'",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "get-ip": "node get-ip.js"
   },
   "keywords": [
     "express",
