@@ -722,6 +722,60 @@ app.get('/get-ip', async (req, res) => {
   }
 });
 
+app.get('/test-mysql', async (req, res) => {
+  try {
+    logger.info('Testing MySQL connection from Railway...');
+
+    await database.connect();
+    logger.info('✅ MySQL connection successful from Railway');
+
+    // Test basic query
+    const mysql = require('mysql2/promise');
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT || 3306,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      ssl: {
+        rejectUnauthorized: false
+      },
+      connectTimeout: 20000
+    });
+
+    const [rows] = await connection.execute('SHOW TABLES');
+    const tableCount = rows.length;
+
+    const [courseRows] = await connection.execute('SELECT COUNT(*) as count FROM courses');
+    const courseCount = courseRows[0].count;
+
+    await connection.end();
+    await database.close();
+
+    res.json({
+      status: 'success',
+      message: 'MySQL connection successful from Railway',
+      database: process.env.DB_NAME,
+      host: process.env.DB_HOST,
+      tables: tableCount,
+      courses: courseCount,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('❌ MySQL connection failed from Railway:', error);
+
+    res.status(500).json({
+      status: 'error',
+      message: 'MySQL connection failed',
+      error: error.message,
+      code: error.code,
+      errno: error.errno,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Debug endpoint to check environment variables
 app.get('/debug/env', (req, res) => {
   res.json({
