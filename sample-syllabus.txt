@@ -1,0 +1,44 @@
+Computer Science 101: Introduction to Programming
+Professor: Dr. Sarah Johnson
+Email: sarah.johnson@university.edu
+Office: Tech Building, Room 205
+Office Hours: Monday/Wednesday 2-4 PM
+
+Course Schedule:
+Meeting Days: Monday, Wednesday, Friday
+Time: 10:00 AM - 11:00 AM
+Location: Tech Building, Room 101
+
+Important Dates:
+Midterm Exam: March 15, 2024
+Final Exam: May 10, 2024
+Project Presentation: April 28, 2024
+
+Assignment Deadlines:
+Assignment 1 (Basic Syntax): February 5, 2024
+Assignment 2 (Control Structures): February 19, 2024
+Assignment 3 (Functions): March 5, 2024
+Assignment 4 (Arrays & Objects): March 26, 2024
+Final Project: May 3, 2024
+
+Weekly Readings:
+Week 1-2: Chapter 1-2 (Introduction to Programming)
+Week 3-4: Chapter 3-4 (Variables and Data Types)
+Week 5-6: Chapter 5-6 (Control Structures)
+Week 7-8: Chapter 7-8 (Functions and Scope)
+Week 9-10: Chapter 9-10 (Arrays and Objects)
+Week 11-12: Chapter 11-12 (File I/O and Error Handling)
+Week 13-14: Chapter 13-14 (Advanced Topics)
+Week 15: Final Review and Project Presentations
+
+Course Description:
+This course introduces fundamental programming concepts including variables, control structures, functions, and basic data structures. Students will learn to write, debug, and test programs using modern programming languages.
+
+Prerequisites: None
+Textbook: "Programming Fundamentals" by Tech Publications, 5th Edition
+
+Grading:
+Assignments: 40%
+Midterm Exam: 25%
+Final Exam: 25%
+Participation: 10%
